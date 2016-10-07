@@ -7,67 +7,49 @@ import numpy as np
 import time
 import os
 import random
+import sys
 
+from subprocess import call
 from sklearn.cluster import KMeans
 
+caffe_root = '/home/apc/co/caffe/'
 data_dir = '/home/apc/co/image_sorter/data/UnlabelledImageProposals/'
 output_dir = '/home/apc/co/image_sorter/data/output/'
-model_root = '/home/apc/co/image_sorter/models/'
-caffe_root = '/home/apc/co/caffe/'
-snapshot_filename = 'chris_iter_2500.caffemodel'
-sort_layer = 'pool5/7x7_s1'
+model_root = '/home/apc/co/image_sorter/models/bvlc_alexnet/'
+model_filename = 'bvlc_alexnet.caffemodel'
+deploy_prototxt = 'deploy.prototxt'
+sort_layer = 'fc7'
+
+number_of_classes = 42
+
+# TODO
+
+# Delete images with (copy) in name
 
 # Load model
-caffe_model_file = model_root + 'deploy_picking.prototxt'
-caffe_pretrained_file = model_root + snapshot_filename
+caffe_model_file = model_root + deploy_prototxt
+caffe_pretrained_file = model_root + model_filename
 mean_vec = np.array([112.817125, 110.58435, 110.7852])
-GoogLeNet = caffeInterface.CaffeNet(caffe_root, caffe_model_file, caffe_pretrained_file, caffe_mean_vec = mean_vec)
+
+# if os.path.isfile(caffe_root + 'models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel'):
+#     print 'CaffeNet found.'
+# else:
+#     print 'Downloading pre-trained CaffeNet model...'
+#     call(['./download_model_binary.py', '/home/apc/co/image_sorter/models/bvlc_reference_caffenet'])
+
+mynet = caffeInterface.CaffeNet(caffe_root, caffe_model_file, caffe_pretrained_file, caffe_mean_vec = mean_vec)
 
 # I think this assumes batch size of 1
-# all_features = np.zeros([1, GoogLeNet.net.blobs[sort_layer].data[0].shape[0]])
+# all_features = np.zeros([1, mynet.net.blobs[sort_layer].data[0].shape[0]])
 all_features = []
 #print all_features
 
 
 def doClassify(img):
-    img_trans = GoogLeNet.transformer.preprocess(GoogLeNet.input_name, img)
-    GoogLeNet.net.blobs[GoogLeNet.input_name].data[...] = img_trans
-    # return GoogLeNet.net.forward()['prob'][0,]
-    return GoogLeNet.net.forward()
-
-def cluster_points(X, mu):
-    clusters  = {}
-    for x in X:
-        bestmukey = min([(i[0], np.linalg.norm(x-mu[i[0]])) \
-                    for i in enumerate(mu)], key=lambda t:t[1])[0]
-        try:
-            clusters[bestmukey].append(x)
-        except KeyError:
-            clusters[bestmukey] = [x]
-    return clusters
-
-def reevaluate_centers(mu, clusters):
-    newmu = []
-    keys = sorted(clusters.keys())
-    for k in keys:
-        newmu.append(np.mean(clusters[k], axis = 0))
-    return newmu
-
-def has_converged(mu, oldmu):
-    return (set([tuple(a) for a in mu]) == set([tuple(a) for a in oldmu]))
-
-def find_centers(X, K):
-    # Initialize to K random centers
-    oldmu = random.sample(X, K)
-    mu = random.sample(X, K)
-    while not has_converged(mu, oldmu):
-        oldmu = mu
-        # Assign all points in X to clusters
-        clusters = cluster_points(X, mu)
-        # Reevaluate centers
-        mu = reevaluate_centers(oldmu, clusters)
-    return(mu, clusters)
-
+    img_trans = mynet.transformer.preprocess(mynet.input_name, img)
+    mynet.net.blobs[mynet.input_name].data[...] = img_trans
+    # return mynet.net.forward()['prob'][0,]
+    return mynet.net.forward()
 
 i = 0
 
@@ -77,34 +59,32 @@ all_filenames = []
 for filename in os.listdir(data_dir):
     if filename.endswith(".png"):
         imagePath = os.path.join(data_dir, filename)
-	all_filenames.append(filename)
+        all_filenames.append(filename)
 
         proposal = cv2.imread(imagePath)
         doClassify(proposal)
 
-	#print dir(GoogLeNet)
-	# for each layer, show the output shape
-	#for layer_name, blob in GoogLeNet.net.blobs.iteritems():
-    	#    print layer_name + '\t' + str(blob.data.shape)
+        #print dir(mynet)
+        # for each layer, show the output shape
+        #for layer_name, blob in mynet.net.blobs.iteritems():
+            #    print layer_name + '\t' + str(blob.data.shape)
 
-	# Layer activations indexed by layer name - index 0 for weights/activations and 1 for biases
-	features = GoogLeNet.net.blobs[sort_layer].data[0]
-	#print features.shape
-	features = features[:,0,0]
-	#print features.shape
-	#print features
-	# Fill all_features from sort_layer
-	#all_features = np.concatenate((all_features, [features]), axis=0)
-	#all_features = np.append(all_features, [features], axis=0)
-	all_features.append(features.copy())
+        # Layer activations indexed by layer name - index 0 for weights/activations and 1 for biases
+        features = mynet.net.blobs[sort_layer].data[0]
+        # print features.shape
+        # features = features[:,0,0]
+        #print features.shape
+        #print features
+        # Fill all_features from sort_layer
+        #all_features = np.concatenate((all_features, [features]), axis=0)
+        #all_features = np.append(all_features, [features], axis=0)
+        all_features.append(features.copy())
 
         #i = i + 1
         #if i == 3:
         #    break
 
 #print all_features
-
-number_of_classes = 42
 
 # TODO: modify Lloyd's k-means algorithm to allow for keeping track of the data that I am sorting
 
